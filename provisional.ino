@@ -4,7 +4,7 @@ Preferences preferences;
 
 const int maxPlayers = 5;
 
-int startLED[5] = {13,12,14,27,26};
+int startLED[5] = {13, 12, 14, 27, 26};
 int buttonPin = 32;
 int buzzer = 5;
 
@@ -15,307 +15,300 @@ int numPlayers = 1;
 
 unsigned long startTime;
 
-
 // -------------------- SETUP --------------------
 
-void setup(){
+void setup()
+{
 
-Serial.begin(115200);
+    Serial.begin(115200);
 
-for(int i=0;i<5;i++){
-pinMode(startLED[i], OUTPUT);
+    for (int i = 0; i < 5; i++)
+    {
+        pinMode(startLED[i], OUTPUT);
+    }
+
+    pinMode(buttonPin, INPUT_PULLUP);
+    pinMode(buzzer, OUTPUT);
+
+    randomSeed(analogRead(0));
 }
-
-pinMode(buttonPin, INPUT_PULLUP);
-pinMode(buzzer, OUTPUT);
-
-randomSeed(analogRead(0));
-
-}
-
 
 // -------------------- ESPERAR BOTON --------------------
 
-void waitForButton(){
+void waitForButton()
+{
 
-while(digitalRead(buttonPin)==HIGH);
+    while (digitalRead(buttonPin) == HIGH)
+        ;
 
-delay(300);
-
+    delay(300);
 }
-
 
 // -------------------- SELECT PLAYERS --------------------
 
-int selectPlayers(){
+int selectPlayers()
+{
 
-int players = 1;
+    int players = 1;
 
-unsigned long lastPress = millis();
+    unsigned long lastPress = millis();
 
-Serial.println("Seleccionar jugadores (1-5)");
+    Serial.println("Seleccionar jugadores (1-5)");
 
-while(true){
+    while (true)
+    {
 
-if(digitalRead(buttonPin)==LOW){
+        if (digitalRead(buttonPin) == LOW)
+        {
 
-delay(250);
+            delay(250);
 
-players++;
+            players++;
 
-if(players>5) players=1;
+            if (players > 5)
+                players = 1;
 
-Serial.print("Jugadores: ");
-Serial.println(players);
+            Serial.print("Jugadores: ");
+            Serial.println(players);
 
-lastPress = millis();
+            lastPress = millis();
+        }
 
+        if (millis() - lastPress > 3000)
+        {
+
+            break;
+        }
+    }
+
+    return players;
 }
-
-if(millis()-lastPress > 3000){
-
-break;
-
-}
-
-}
-
-return players;
-
-}
-
 
 // -------------------- SECUENCIA DE LUCES --------------------
 
-void startSequence(){
+void startSequence()
+{
 
-for(int i=0;i<5;i++){
+    for (int i = 0; i < 5; i++)
+    {
 
-digitalWrite(startLED[i], HIGH);
-tone(buzzer,1000,80);
+        digitalWrite(startLED[i], HIGH);
+        tone(buzzer, 1000, 80);
 
-delay(600);
-
+        delay(600);
+    }
 }
-
-}
-
 
 // -------------------- ESPERA ALEATORIA --------------------
 
-bool randomWait(){
+bool randomWait()
+{
 
-long waitTime = random(200,5000);
+    long waitTime = random(500, 5000);
 
-unsigned long start = millis();
+    unsigned long start = millis();
 
-while(millis()-start < waitTime){
+    while (millis() - start < waitTime)
+    {
 
-if(digitalRead(buttonPin)==LOW){
+        if (digitalRead(buttonPin) == LOW)
+        {
 
-return true;
+            return true;
+        }
+    }
 
+    return false;
 }
-
-}
-
-return false;
-
-}
-
 
 // -------------------- APAGADO DE LUCES --------------------
 
-void lightsOut(){
+void lightsOut()
+{
 
-for(int i=0;i<5;i++){
+    for (int i = 0; i < 5; i++)
+    {
 
-digitalWrite(startLED[i], LOW);
+        digitalWrite(startLED[i], LOW);
+    }
 
+    tone(buzzer, 2000, 150);
+
+    startTime = micros();
 }
-
-tone(buzzer,2000,150);
-
-startTime = micros();
-
-}
-
 
 // -------------------- TURNO DE JUGADOR --------------------
 
-unsigned long playTurn(){
+unsigned long playTurn()
+{
 
-startSequence();
+    startSequence();
 
-bool falseStart = randomWait();
+    bool falseStart = randomWait();
 
-if(falseStart){
+    if (falseStart)
+    {
 
-Serial.println("FALSE START!");
+        Serial.println("FALSE START!");
 
-delay(1500);
+        delay(1500);
 
-return 999999999;
+        return 999999999;
+    }
 
+    lightsOut();
+
+    while (digitalRead(buttonPin) == HIGH)
+        ;
+
+    unsigned long reaction = micros() - startTime;
+
+    return reaction;
 }
-
-lightsOut();
-
-while(digitalRead(buttonPin)==HIGH);
-
-unsigned long reaction = micros() - startTime;
-
-return reaction;
-
-}
-
 
 // -------------------- ORDENAR LEADERBOARD --------------------
 
-void sortLeaderboard(){
+void sortLeaderboard()
+{
 
-for(int i=0;i<numPlayers;i++){
-order[i]=i;
+    for (int i = 0; i < numPlayers; i++)
+    {
+        order[i] = i;
+    }
+
+    for (int i = 0; i < numPlayers - 1; i++)
+    {
+
+        for (int j = i + 1; j < numPlayers; j++)
+        {
+
+            if (playerTimes[order[j]] < playerTimes[order[i]])
+            {
+
+                int temp = order[i];
+                order[i] = order[j];
+                order[j] = temp;
+            }
+        }
+    }
 }
-
-for(int i=0;i<numPlayers-1;i++){
-
-for(int j=i+1;j<numPlayers;j++){
-
-if(playerTimes[order[j]] < playerTimes[order[i]]){
-
-int temp = order[i];
-order[i] = order[j];
-order[j] = temp;
-
-}
-
-}
-
-}
-
-}
-
 
 // -------------------- MOSTRAR GANADOR --------------------
 
-void showWinner(int winner){
+void showWinner(int winner)
+{
 
-Serial.println("----- RESULTADOS -----");
+    Serial.println("----- RESULTADOS -----");
 
-Serial.print("GANADOR: Jugador ");
-Serial.println(winner+1);
+    Serial.print("GANADOR: Jugador ");
+    Serial.println(winner + 1);
 
-if(playerTimes[winner] != 999999999){
+    if (playerTimes[winner] != 999999999)
+    {
 
-Serial.print("Tiempo: ");
-Serial.print(playerTimes[winner]/1000.0);
-Serial.println(" ms");
-
+        Serial.print("Tiempo: ");
+        Serial.print(playerTimes[winner] / 1000.0);
+        Serial.println(" ms");
+    }
 }
-
-}
-
 
 // -------------------- LEADERBOARD --------------------
 
-void showLeaderboard(){
+void showLeaderboard()
+{
 
-sortLeaderboard();
+    sortLeaderboard();
 
-Serial.println("===== LEADERBOARD =====");
+    Serial.println("===== LEADERBOARD =====");
 
-for(int i=0;i<numPlayers;i++){
+    for (int i = 0; i < numPlayers; i++)
+    {
 
-int p = order[i];
+        int p = order[i];
 
-Serial.print(i+1);
-Serial.print(") Jugador ");
-Serial.print(p+1);
-Serial.print("  ");
+        Serial.print(i + 1);
+        Serial.print(") Jugador ");
+        Serial.print(p + 1);
+        Serial.print("  ");
 
-if(playerTimes[p]==999999999){
+        if (playerTimes[p] == 999999999)
+        {
 
-Serial.println("FALSE START");
+            Serial.println("FALSE START");
+        }
+        else
+        {
 
-}else{
+            Serial.print(playerTimes[p] / 1000.0);
+            Serial.println(" ms");
+        }
 
-Serial.print(playerTimes[p]/1000.0);
-Serial.println(" ms");
-
+        delay(1200);
+    }
 }
-
-delay(1200);
-
-}
-
-}
-
 
 // -------------------- CALCULAR GANADOR --------------------
 
-int findWinner(){
+int findWinner()
+{
 
-unsigned long best = 999999999;
-int winner = -1;
+    unsigned long best = 999999999;
+    int winner = -1;
 
-for(int i=0;i<numPlayers;i++){
+    for (int i = 0; i < numPlayers; i++)
+    {
 
-if(playerTimes[i] < best){
+        if (playerTimes[i] < best)
+        {
 
-best = playerTimes[i];
-winner = i;
+            best = playerTimes[i];
+            winner = i;
+        }
+    }
 
+    return winner;
 }
-
-}
-
-return winner;
-
-}
-
 
 // -------------------- NEW GAME --------------------
 
-void newGame(){
+void newGame()
+{
 
-Serial.println("===== NEW GAME =====");
+    Serial.println("===== NEW GAME =====");
 
-numPlayers = selectPlayers();
+    numPlayers = selectPlayers();
 
-Serial.print("Jugadores confirmados: ");
-Serial.println(numPlayers);
-
+    Serial.print("Jugadores confirmados: ");
+    Serial.println(numPlayers);
 }
-
 
 // -------------------- LOOP PRINCIPAL --------------------
 
-void loop(){
+void loop()
+{
 
-newGame();
+    newGame();
 
-for(int i=0;i<numPlayers;i++){
+    for (int i = 0; i < numPlayers; i++)
+    {
 
-Serial.print("Turno Jugador ");
-Serial.println(i+1);
+        Serial.print("Turno Jugador ");
+        Serial.println(i + 1);
 
-playerTimes[i] = playTurn();
+        playerTimes[i] = playTurn();
 
-delay(2000);
+        delay(2000);
+    }
 
-}
+    int winner = findWinner();
 
-int winner = findWinner();
+    showWinner(winner);
 
-showWinner(winner);
+    delay(2000);
 
-delay(2000);
+    showLeaderboard();
 
-showLeaderboard();
+    Serial.println("Presione boton para nuevo juego");
 
-Serial.println("Presione boton para nuevo juego");
-
-waitForButton();
-
+    waitForButton();
 }
