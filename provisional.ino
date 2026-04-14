@@ -1,314 +1,222 @@
-#include <Preferences.h>
+// ================= CONFIG =================
 
-Preferences preferences;
+#define NUM_PLAYERS 4
+#define TRACK_LENGTH 10   // LEDs por carril
+#define GEARS 4
 
-const int maxPlayers = 5;
+// Pines botones
+int buttonPins[NUM_PLAYERS] = {32, 33, 25, 26};
 
-int startLED[5] = {13, 12, 14, 27, 26};
-int buttonPin = 32;
-int buzzer = 5;
+// Pines LEDs de cada carril
+int trackPins[NUM_PLAYERS][TRACK_LENGTH] = {
+  {2,4,5,18,19,21,22,23,13,12},
+  {14,27,26,25,33,32,15,16,17,18},
+  {19,21,22,23,13,12,14,27,26,25},
+  {4,5,18,19,21,22,23,13,12,14}
+};
 
-unsigned long playerTimes[maxPlayers];
-int order[maxPlayers];
+// LEDs de largada (5 luces)
+int startLights[5] = {15, 16, 17, 18, 19};
 
-int numPlayers = 1;
+// ================= VARIABLES =================
 
-unsigned long startTime;
+bool activePlayer[NUM_PLAYERS];
+int position[NUM_PLAYERS];
+int gear[NUM_PLAYERS];
+unsigned long lastShiftTime[NUM_PLAYERS];
 
-// -------------------- SETUP --------------------
+bool raceStarted = false;
+bool falseStart[NUM_PLAYERS];
 
-void setup()
-{
+// Ventana ideal de cambio (ms)
+const int PERFECT_WINDOW = 150;
+const int PENALTY_TIME = 500;
 
-    Serial.begin(115200);
+// ================= SETUP =================
 
-    for (int i = 0; i < 5; i++)
-    {
-        pinMode(startLED[i], OUTPUT);
+void setup() {
+  Serial.begin(115200);
+
+  for(int i=0;i<NUM_PLAYERS;i++){
+    pinMode(buttonPins[i], INPUT_PULLUP);
+  }
+
+  for(int p=0;p<NUM_PLAYERS;p++){
+    for(int i=0;i<TRACK_LENGTH;i++){
+      pinMode(trackPins[p][i], OUTPUT);
     }
+  }
 
-    pinMode(buttonPin, INPUT_PULLUP);
-    pinMode(buzzer, OUTPUT);
+  for(int i=0;i<5;i++){
+    pinMode(startLights[i], OUTPUT);
+  }
 
-    randomSeed(analogRead(0));
+  resetGame();
 }
 
-// -------------------- ESPERAR BOTON --------------------
+// ================= LOOP =================
 
-void waitForButton()
-{
-
-    while (digitalRead(buttonPin) == HIGH)
-        ;
-
-    delay(300);
+void loop() {
+  selectPlayers();
+  startSequence();
+  raceLoop();
 }
 
-// -------------------- SELECT PLAYERS --------------------
+// ================= FUNCIONES =================
 
-int selectPlayers()
-{
-
-    int players = 1;
-
-    unsigned long lastPress = millis();
-
-    Serial.println("Seleccionar jugadores (1-5)");
-
-    while (true)
-    {
-
-        if (digitalRead(buttonPin) == LOW)
-        {
-
-            delay(250);
-
-            players++;
-
-            if (players > 5)
-                players = 1;
-
-            Serial.print("Jugadores: ");
-            Serial.println(players);
-
-            lastPress = millis();
-        }
-
-        if (millis() - lastPress > 3000)
-        {
-
-            break;
-        }
-    }
-
-    return players;
+// Reset general
+void resetGame(){
+  for(int i=0;i<NUM_PLAYERS;i++){
+    activePlayer[i] = false;
+    position[i] = 0;
+    gear[i] = 1;
+    falseStart[i] = false;
+  }
 }
 
-// -------------------- SECUENCIA DE LUCES --------------------
+// ================= SELECCIÓN =================
 
-void startSequence()
-{
+void selectPlayers(){
+  Serial.println("Seleccionando jugadores...");
 
-    for (int i = 0; i < 5; i++)
-    {
-
-        digitalWrite(startLED[i], HIGH);
-        tone(buzzer, 1000, 80);
-
-        delay(600);
+  while(true){
+    for(int i=0;i<NUM_PLAYERS;i++){
+      if(digitalRead(buttonPins[i]) == LOW){
+        activePlayer[i] = true;
+        digitalWrite(trackPins[i][0], HIGH);
+      }
     }
+
+    // Si al menos uno juega y pasan 3 segundos sin cambios → continuar
+    static unsigned long lastPress = millis();
+
+    if(millis() - lastPress > 3000){
+      break;
+    }
+  }
 }
 
-// -------------------- ESPERA ALEATORIA --------------------
+// ================= LARGADA =================
 
-bool randomWait()
-{
+void startSequence(){
+  Serial.println("Secuencia de largada...");
 
-    long waitTime = random(500, 5000);
+  // Encender luces progresivamente
+  for(int i=0;i<5;i++){
+    digitalWrite(startLights[i], HIGH);
+    delay(500);
+  }
 
-    unsigned long start = millis();
+  // Tiempo aleatorio
+  int delayTime = random(200, 5000);
+  unsigned long startWait = millis();
 
-    while (millis() - start < waitTime)
-    {
-
-        if (digitalRead(buttonPin) == LOW)
-        {
-
-            return true;
-        }
+  // Detectar falsa largada
+  while(millis() - startWait < delayTime){
+    for(int i=0;i<NUM_PLAYERS;i++){
+      if(activePlayer[i] && digitalRead(buttonPins[i]) == LOW){
+        falseStart[i] = true;
+        Serial.print("Falsa largada jugador ");
+        Serial.println(i);
+      }
     }
+  }
 
-    return false;
+  // Apagar luces → GO
+  for(int i=0;i<5;i++){
+    digitalWrite(startLights[i], LOW);
+  }
+
+  raceStarted = true;
+
+  for(int i=0;i<NUM_PLAYERS;i++){
+    lastShiftTime[i] = millis();
+  }
 }
 
-// -------------------- APAGADO DE LUCES --------------------
+// ================= CARRERA =================
 
-void lightsOut()
-{
+void raceLoop(){
+  while(raceStarted){
 
-    for (int i = 0; i < 5; i++)
-    {
+    for(int i=0;i<NUM_PLAYERS;i++){
 
-        digitalWrite(startLED[i], LOW);
+      if(!activePlayer[i]) continue;
+
+      // Penalización por falsa largada
+      if(falseStart[i]){
+        delay(1000);
+        falseStart[i] = false;
+      }
+
+      // Movimiento automático base
+      moveForward(i);
+
+      // Sistema de cambios
+      if(digitalRead(buttonPins[i]) == LOW){
+        handleShift(i);
+      }
+
+      // Ganador
+      if(position[i] >= TRACK_LENGTH-1){
+        Serial.print("GANO JUGADOR ");
+        Serial.println(i);
+        raceStarted = false;
+      }
     }
 
-    tone(buzzer, 2000, 150);
-
-    startTime = micros();
+    delay(200);
+  }
 }
 
-// -------------------- TURNO DE JUGADOR --------------------
+// ================= MOVIMIENTO =================
 
-unsigned long playTurn()
-{
+void moveForward(int player){
 
-    startSequence();
-
-    bool falseStart = randomWait();
-
-    if (falseStart)
-    {
-
-        Serial.println("FALSE START!");
-
-        delay(1500);
-
-        return 999999999;
-    }
-
-    lightsOut();
-
-    while (digitalRead(buttonPin) == HIGH)
-        ;
-
-    unsigned long reaction = micros() - startTime;
-
-    return reaction;
+  if(position[player] < TRACK_LENGTH-1){
+    digitalWrite(trackPins[player][position[player]], LOW);
+    position[player]++;
+    digitalWrite(trackPins[player][position[player]], HIGH);
+  }
 }
 
-// -------------------- ORDENAR LEADERBOARD --------------------
+// ================= CAMBIOS =================
 
-void sortLeaderboard()
-{
+void handleShift(int player){
 
-    for (int i = 0; i < numPlayers; i++)
-    {
-        order[i] = i;
-    }
+  unsigned long now = millis();
+  int diff = now - lastShiftTime[player];
 
-    for (int i = 0; i < numPlayers - 1; i++)
-    {
+  // Simula timing ideal
+  if(diff < PERFECT_WINDOW){
+    // Muy temprano → penaliza
+    Serial.println("Muy temprano!");
+    delay(PENALTY_TIME);
+  }
+  else if(diff > PERFECT_WINDOW * 3){
+    // Muy tarde → penaliza
+    Serial.println("Muy tarde!");
+    delay(PENALTY_TIME);
+  }
+  else{
+    // Perfecto → boost
+    Serial.println("Perfect shift!");
+    boostPlayer(player);
+  }
 
-        for (int j = i + 1; j < numPlayers; j++)
-        {
+  // Subir marcha
+  if(gear[player] < GEARS){
+    gear[player]++;
+  }
 
-            if (playerTimes[order[j]] < playerTimes[order[i]])
-            {
-
-                int temp = order[i];
-                order[i] = order[j];
-                order[j] = temp;
-            }
-        }
-    }
+  lastShiftTime[player] = now;
 }
 
-// -------------------- MOSTRAR GANADOR --------------------
+// ================= BOOST =================
 
-void showWinner(int winner)
-{
+void boostPlayer(int player){
 
-    Serial.println("----- RESULTADOS -----");
-
-    Serial.print("GANADOR: Jugador ");
-    Serial.println(winner + 1);
-
-    if (playerTimes[winner] != 999999999)
-    {
-
-        Serial.print("Tiempo: ");
-        Serial.print(playerTimes[winner] / 1000.0);
-        Serial.println(" ms");
-    }
-}
-
-// -------------------- LEADERBOARD --------------------
-
-void showLeaderboard()
-{
-
-    sortLeaderboard();
-
-    Serial.println("===== LEADERBOARD =====");
-
-    for (int i = 0; i < numPlayers; i++)
-    {
-
-        int p = order[i];
-
-        Serial.print(i + 1);
-        Serial.print(") Jugador ");
-        Serial.print(p + 1);
-        Serial.print("  ");
-
-        if (playerTimes[p] == 999999999)
-        {
-
-            Serial.println("FALSE START");
-        }
-        else
-        {
-
-            Serial.print(playerTimes[p] / 1000.0);
-            Serial.println(" ms");
-        }
-
-        delay(1200);
-    }
-}
-
-// -------------------- CALCULAR GANADOR --------------------
-
-int findWinner()
-{
-
-    unsigned long best = 999999999;
-    int winner = -1;
-
-    for (int i = 0; i < numPlayers; i++)
-    {
-
-        if (playerTimes[i] < best)
-        {
-
-            best = playerTimes[i];
-            winner = i;
-        }
-    }
-
-    return winner;
-}
-
-// -------------------- NEW GAME --------------------
-
-void newGame()
-{
-
-    Serial.println("===== NEW GAME =====");
-
-    numPlayers = selectPlayers();
-
-    Serial.print("Jugadores confirmados: ");
-    Serial.println(numPlayers);
-}
-
-// -------------------- LOOP PRINCIPAL --------------------
-
-void loop()
-{
-
-    newGame();
-
-    for (int i = 0; i < numPlayers; i++)
-    {
-
-        Serial.print("Turno Jugador ");
-        Serial.println(i + 1);
-
-        playerTimes[i] = playTurn();
-
-        delay(2000);
-    }
-
-    int winner = findWinner();
-
-    showWinner(winner);
-
-    delay(2000);
-
-    showLeaderboard();
-
-    Serial.println("Presione boton para nuevo juego");
-
-    waitForButton();
+  for(int i=0;i<2;i++){
+    moveForward(player);
+  }
 }
