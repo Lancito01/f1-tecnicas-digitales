@@ -1,0 +1,148 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║              ARDUINO ALIAS COMMANDS - QUICK START GUIDE                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+✨ YOU HAVE 8 QUICK COMMANDS READY TO USE!
+
+All files are in: C:\Users\Andy\OneDrive\Facultad\Técnicas Digitales\
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🚀 QUICKEST WORKFLOW (3 commands):
+
+  1. find-port
+     → Find your ESP32's COM port
+     → Shows which USB port is your ESP32
+
+  2. test-upload COM3
+     → Test with the blink sketch
+     → Replace COM3 with your actual port
+
+  3. upload my_sketch.ino COM3
+     → Upload your code to ESP32
+     → That's it!
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 ALL COMMANDS:
+
+  find-port [NO ARGS]
+  ├─ Usage: find-port
+  ├─ Shows connected COM ports
+  └─ Find the one with (USB) - that's your ESP32!
+
+  upload [SKETCH.INO] [COM_PORT]
+  ├─ Usage: upload my_sketch.ino COM3
+  ├─ Or:    upload my_sketch.ino (auto-detect)
+  └─ Uploads your sketch
+
+  test-upload [COM_PORT]
+  ├─ Usage: test-upload COM3
+  ├─ Or:    test-upload (auto-detect)
+  └─ Tests with the blink sketch
+
+  compile [SKETCH_FOLDER]
+  ├─ Usage: compile C:\path\to\sketch
+  ├─ Compile only (no upload)
+  └─ Good for checking errors
+
+  search-lib [KEYWORD]
+  ├─ Usage: search-lib WiFi
+  ├─ Searches for available libraries
+  └─ Example: search-lib Adafruit
+
+  install-lib [LIBRARY_NAME]
+  ├─ Usage: install-lib "WiFi"
+  ├─ Install a library
+  └─ Use quotes if name has spaces
+
+  list-libs [NO ARGS]
+  ├─ Usage: list-libs
+  ├─ Shows all installed libraries
+  └─ See what you have available
+
+  help-arduino [NO ARGS]
+  ├─ Usage: help-arduino
+  ├─ Shows this help screen
+  └─ Quick reference
+
+═══════════════════════════════════════════════════════════════════════════════
+
+💻 HOW TO RUN THEM:
+
+  1. Open Command Prompt (CMD)
+     → Windows Key + R
+     → Type: cmd
+     → Press Enter
+
+  2. Make sure you're in your project directory
+     (Or navigate to: C:\Users\Andy\OneDrive\Facultad\Técnicas Digitales\)
+
+  3. Just type the command!
+     → find-port
+     → upload my_sketch.ino COM3
+     → etc.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📝 EXAMPLE SESSION:
+
+  C:\> find-port
+  Finding ESP32 COM port...
+  
+  Port Protocol Type              Board Name FQBN
+  COM3 serial   Serial Port (USB) Unknown
+  
+  Note the port with (USB) - COM3 is your ESP32!
+
+  C:\> upload my_sketch.ino COM3
+  [INFO] Uploading my_sketch.ino to COM3...
+  [Compilation...]
+  [Upload...]
+  [SUCCESS] ✅ Upload completed!
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 COMMON TASKS:
+
+  Task: Find your ESP32 port
+  → find-port
+
+  Task: Test if everything works
+  → test-upload COM3
+
+  Task: Upload your sketch
+  → upload your_sketch.ino COM3
+
+  Task: Auto-detect port and upload
+  → upload your_sketch.ino
+
+  Task: Just check for compilation errors
+  → compile C:\path\to\sketch
+
+  Task: Find a library
+  → search-lib WiFi
+
+  Task: Install that library
+  → install-lib "WiFi"
+
+  Task: See what's installed
+  → list-libs
+
+═══════════════════════════════════════════════════════════════════════════════
+
+⚡ TIME SAVERS:
+
+  BEFORE (old way):
+  C:\arduino-cli\quick-upload.bat my_sketch.ino COM3
+
+  AFTER (new way):
+  upload my_sketch.ino COM3
+
+  That's way faster! ⚡
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✨ YOU'RE ALL SET!
+
+Just type short commands and you're good to go. Enjoy! 🚀
