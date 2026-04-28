@@ -17,7 +17,7 @@ const int jumpStartThresholdMs = 111;
 
 int buttonPins[] = { mainBtnPin, blueBtnPin, redBtnPin };
 int ledPins[] = { mainLedPin, blueLedPin, redLedPin };
-int lastWinner = -1;  //* 0 for blue, 1 for red
+int lastWinner = -1;  //* 0 for tie, 1 for blue, 2 for red
 bool powerMainLed = false;
 bool lastPressed;
 unsigned long lastBlinkTimeMs;
@@ -65,7 +65,7 @@ void loop() {
         currentState = PLAYING;
         lastPressed = currPressed;
         gearTimings[0] = random(2000, 4001);
-        for (int i = 1; i < totalGears; i++) {
+        for (int i = 0; i < totalGears; i++) {
           gearTimings[i] = random(1000, 3001);
           bluePlayerTimes[i] = -1;
           redPlayerTimes[i] = -1;
@@ -83,8 +83,6 @@ void loop() {
       {
         bool bluePlayer = readButton(blueBtnPin);
         bool redPlayer = readButton(redBtnPin);
-        // Serial.println(currentGearRunning);
-        // Serial.println(shouldPress ? "true" : "false");
 
         if (currentGearRunning >= totalGears) {
           currentState = GAME_END;
@@ -99,6 +97,8 @@ void loop() {
           }
 
           if (redResult < blueResult) {
+            lastWinner = 2;
+          } else if (redResult > blueResult) {
             lastWinner = 1;
           } else {
             lastWinner = 0;
@@ -109,14 +109,16 @@ void loop() {
             Serial.print(score);
             Serial.println(" ");
           }
-          Serial.println(redResult);
+          Serial.print("Result: ");
+            Serial.println(redResult);
 
           Serial.println("Blue player times: ");
           for (int score : bluePlayerTimes) {
             Serial.print(score);
             Serial.println(" ");
           }
-          Serial.println(blueResult);
+          Serial.print("Result: ");
+            Serial.println(blueResult);
           break;
         }
 
@@ -180,7 +182,12 @@ void loop() {
       }
     case GAME_END:
       writeLed(mainLedPin, false);
-      writeLed(lastWinner ? redLedPin : blueLedPin, true);
+      if (lastWinner == 0) {  // tie, turn on both
+        writeLed(redLedPin, true);
+        writeLed(blueLedPin, true);
+      } else {
+        writeLed(lastWinner == 2 ? redLedPin : blueLedPin, true);
+      }
       if (currPressed) {
         while (readButton(mainBtnPin)) {
           delay(1);
