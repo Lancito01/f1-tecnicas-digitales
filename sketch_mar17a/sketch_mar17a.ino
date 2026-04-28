@@ -1,29 +1,35 @@
 // <>
 #include <esp_system.h>
-const int mainBtnPin = 19;
-const int blueBtnPin = 18;
-const int redBtnPin = 5;
+const int mainBtnPin = 22;
 const int mainLedPin = 23;
-const int blueLedPin = 25;
-const int redLedPin = 26;
+const int redBtnPin = 32;
+const int blueBtnPin = 33;
+const int greenBtnPin = 25;
+const int yellowBtnPin = 26;
+const int redLedPin = 21;
+const int blueLedPin = 19;
+const int greenLedPin = 18;
+const int yellowLedPin = 5;
 
 enum State { WAITING_FOR_GAME,
              PLAYING,
              GAME_END };
+const int playerCount = 4;
 const int totalGears = 4;
 const int penaltyMs = 1000;
 const int reactionWindowMs = 800;
 const int jumpStartThresholdMs = 111;
 const int debounceGracePeriodMs = 250;
 
-int buttonPins[] = { mainBtnPin, blueBtnPin, redBtnPin };
-int ledPins[] = { mainLedPin, blueLedPin, redLedPin };
-int lastWinner = -1;  //* 0 for tie, 1 for blue, 2 for red
+const int playerBtnPins[playerCount] = { redBtnPin, blueBtnPin, greenBtnPin, yellowBtnPin };
+const int playerLedPins[playerCount] = { redLedPin, blueLedPin, greenLedPin, yellowLedPin };
+const char* playerNames[playerCount] = { "Red", "Blue", "Green", "Yellow" };
+int lastWinner = -1;  //* 0 for tie, 1 for red, 2 for blue, 3 for green, 4 for yellow
 bool powerMainLed = false;
 bool lastPressed;
 unsigned long lastBlinkTimeMs;
-int bluePlayerTimes[totalGears];
-int redPlayerTimes[totalGears];
+int playerTimes[playerCount][totalGears];
+int playerResults[playerCount];
 int gearTimings[totalGears];
 int currentGearRunning;
 unsigned long currentGearRunningTime;
@@ -40,9 +46,11 @@ void writeLed(int ledPin, bool value) {
 }
 
 void setup() {
-  for (int i = 0; i < 3; i++) {
-    pinMode(buttonPins[i], INPUT_PULLUP);
-    pinMode(ledPins[i], OUTPUT);
+  pinMode(mainBtnPin, INPUT_PULLUP);
+  pinMode(mainLedPin, OUTPUT);
+  for (int i = 0; i < playerCount; i++) {
+    pinMode(playerBtnPins[i], INPUT_PULLUP);
+    pinMode(playerLedPins[i], OUTPUT);
   }
   randomSeed((uint32_t)esp_random());  // makes timings variable each reset
   Serial.begin(9600);
@@ -56,8 +64,9 @@ void loop() {
 
   switch (currentState) {
     case WAITING_FOR_GAME:
-      writeLed(blueLedPin, false);
-      writeLed(redLedPin, false);
+      for (int i = 0; i < playerCount; i++) {
+        writeLed(playerLedPins[i], false);
+      }
       if (currPressed && !lastPressed) {  //? user just pressed the button
         lastPressed = currPressed;
         writeLed(mainLedPin, false);
@@ -68,8 +77,9 @@ void loop() {
         gearTimings[0] = random(2000, 4001);
         for (int i = 0; i < totalGears; i++) {
           gearTimings[i] = random(1000, 3001);
-          bluePlayerTimes[i] = -1;
-          redPlayerTimes[i] = -1;
+          for (int player = 0; player < playerCount; player++) {
+            playerTimes[player][i] = -1;
+          }
         }
 
         lastBlinkTimeMs = millis();
@@ -82,44 +92,44 @@ void loop() {
       break;
     case PLAYING:
       {
-        bool bluePlayer = readButton(blueBtnPin);
-        bool redPlayer = readButton(redBtnPin);
+        bool playerPressed[playerCount];
+        for (int player = 0; player < playerCount; player++) {
+          playerPressed[player] = readButton(playerBtnPins[player]);
+        }
 
         if (currentGearRunning >= totalGears) {
           currentState = GAME_END;
-          int redResult = 0;
-          for (int time : redPlayerTimes) {
-            redResult += time;
+          for (int player = 0; player < playerCount; player++) {
+            playerResults[player] = 0;
+            for (int gear = 0; gear < totalGears; gear++) {
+              playerResults[player] += playerTimes[player][gear];
+            }
           }
 
-          int blueResult = 0;
-          for (int time : bluePlayerTimes) {
-            blueResult += time;
+          int bestResult = playerResults[0];
+          int bestPlayerIdx = 0;
+          bool hasTie = false;
+          for (int player = 1; player < playerCount; player++) {
+            if (playerResults[player] < bestResult) {
+              bestResult = playerResults[player];
+              bestPlayerIdx = player;
+              hasTie = false;
+            } else if (playerResults[player] == bestResult) {
+              hasTie = true;
+            }
           }
+          lastWinner = hasTie ? 0 : bestPlayerIdx + 1;
 
-          if (redResult < blueResult) {
-            lastWinner = 2;
-          } else if (redResult > blueResult) {
-            lastWinner = 1;
-          } else {
-            lastWinner = 0;
+          for (int player = 0; player < playerCount; player++) {
+            Serial.print(playerNames[player]);
+            Serial.println(" player times: ");
+            for (int gear = 0; gear < totalGears; gear++) {
+              Serial.print(playerTimes[player][gear]);
+              Serial.println(" ");
+            }
+            Serial.print("Result: ");
+            Serial.println(playerResults[player]);
           }
-
-          Serial.println("Red player times: ");
-          for (int score : redPlayerTimes) {
-            Serial.print(score);
-            Serial.println(" ");
-          }
-          Serial.print("Result: ");
-            Serial.println(redResult);
-
-          Serial.println("Blue player times: ");
-          for (int score : bluePlayerTimes) {
-            Serial.print(score);
-            Serial.println(" ");
-          }
-          Serial.print("Result: ");
-            Serial.println(blueResult);
           break;
         }
 
@@ -138,39 +148,43 @@ void loop() {
         }
 
         // checks for "pressed too early"
-        if (!shouldPress && redPlayer && millis() - currentGearRunningTime > debounceGracePeriodMs) {
-          redPlayerTimes[currentGearRunning] = penaltyMs;
-        }
-        if (!shouldPress && bluePlayer && millis() - currentGearRunningTime > debounceGracePeriodMs) {
-          bluePlayerTimes[currentGearRunning] = penaltyMs;
+        for (int player = 0; player < playerCount; player++) {
+          if (!shouldPress && playerPressed[player] && millis() - currentGearRunningTime > debounceGracePeriodMs) {
+            playerTimes[player][currentGearRunning] = penaltyMs;
+          }
         }
 
         if (!shouldPress) break;  // early return case
 
         // check for jumpstart
-        if (redPlayer && millis() - playerReactionTime < jumpStartThresholdMs) {
-          redPlayerTimes[currentGearRunning] = penaltyMs;
-        }
-        if (bluePlayer && millis() - playerReactionTime < jumpStartThresholdMs) {
-          bluePlayerTimes[currentGearRunning] = penaltyMs;
+        for (int player = 0; player < playerCount; player++) {
+          if (playerPressed[player] && millis() - playerReactionTime < jumpStartThresholdMs) {
+            playerTimes[player][currentGearRunning] = penaltyMs;
+          }
         }
 
         // adds current time if they didn't press too early
-        if (redPlayer && redPlayerTimes[currentGearRunning] == -1) {
-          redPlayerTimes[currentGearRunning] = millis() - playerReactionTime;
+        for (int player = 0; player < playerCount; player++) {
+          if (playerPressed[player] && playerTimes[player][currentGearRunning] == -1) {
+            playerTimes[player][currentGearRunning] = millis() - playerReactionTime;
+          }
         }
-        if (bluePlayer && bluePlayerTimes[currentGearRunning] == -1) {
-          bluePlayerTimes[currentGearRunning] = millis() - playerReactionTime;
+
+        bool allPlayersDone = true;
+        for (int player = 0; player < playerCount; player++) {
+          if (playerTimes[player][currentGearRunning] == -1) {
+            allPlayersDone = false;
+            break;
+          }
         }
 
         if (millis() - playerReactionTime >= reactionWindowMs
-            || (redPlayerTimes[currentGearRunning] != -1 && bluePlayerTimes[currentGearRunning] != -1)) {  // current gear ends
+            || allPlayersDone) {  // current gear ends
           // checks for "didn't press"
-          if (redPlayerTimes[currentGearRunning] == -1) {
-            redPlayerTimes[currentGearRunning] = penaltyMs;
-          }
-          if (bluePlayerTimes[currentGearRunning] == -1) {
-            bluePlayerTimes[currentGearRunning] = penaltyMs;
+          for (int player = 0; player < playerCount; player++) {
+            if (playerTimes[player][currentGearRunning] == -1) {
+              playerTimes[player][currentGearRunning] = penaltyMs;
+            }
           }
 
           writeLed(mainLedPin, true);
@@ -183,14 +197,18 @@ void loop() {
       }
     case GAME_END:
       writeLed(mainLedPin, false);
-      if (lastWinner == 0) {  // tie, turn on both
-        writeLed(redLedPin, true);
-        writeLed(blueLedPin, true);
+      for (int i = 0; i < playerCount; i++) {
+        writeLed(playerLedPins[i], false);
+      }
+      if (lastWinner == 0) {  // tie, turn on all players
+        for (int i = 0; i < playerCount; i++) {
+          writeLed(playerLedPins[i], true);
+        }
       } else {
-        writeLed(lastWinner == 2 ? redLedPin : blueLedPin, true);
+        writeLed(playerLedPins[lastWinner - 1], true);
       }
       if (currPressed) {
-        while (readButton(mainBtnPin)) {
+        while (readButton(mainBtnPin)) {  // button is being held down (debounce)
           delay(1);
         }
         currentState = WAITING_FOR_GAME;
