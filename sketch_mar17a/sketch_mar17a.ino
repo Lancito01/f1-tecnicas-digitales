@@ -12,8 +12,9 @@ enum State { WAITING_FOR_GAME,
              GAME_END };
 const int totalGears = 4;
 const int penaltyMs = 1000;
-const int reactionWindowMs = 1000;
+const int reactionWindowMs = 800;
 const int jumpStartThresholdMs = 111;
+const int debounceGracePeriodMs = 250;
 
 int buttonPins[] = { mainBtnPin, blueBtnPin, redBtnPin };
 int ledPins[] = { mainLedPin, blueLedPin, redLedPin };
@@ -137,10 +138,10 @@ void loop() {
         }
 
         // checks for "pressed too early"
-        if (!shouldPress && redPlayer && millis() - currentGearRunningTime > 400) {
+        if (!shouldPress && redPlayer && millis() - currentGearRunningTime > debounceGracePeriodMs) {
           redPlayerTimes[currentGearRunning] = penaltyMs;
         }
-        if (!shouldPress && bluePlayer && millis() - currentGearRunningTime > 400) {
+        if (!shouldPress && bluePlayer && millis() - currentGearRunningTime > debounceGracePeriodMs) {
           bluePlayerTimes[currentGearRunning] = penaltyMs;
         }
 
