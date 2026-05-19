@@ -32,6 +32,12 @@ int playerTimes[playerCount][totalGears];
 int playerResults[playerCount];
 int gearTimings[totalGears];
 int currentGearRunning;
+bool activePlayers[playerCount];
+// per-player non-blocking debounce
+const unsigned long playerDebounceMs = 50;
+unsigned long lastPlayerDebounceTime[playerCount];
+bool lastPlayerRaw[playerCount];
+bool stablePlayerBtn[playerCount];
 unsigned long currentGearRunningTime;
 unsigned long playerReactionTime;
 bool shouldPress;
@@ -57,6 +63,14 @@ void setup() {
   Serial.println("> Waiting for user to start game...");
   currentState = WAITING_FOR_GAME;
   lastPressed = false;
+  // initialize player activation state (all OFF by default)
+  for (int i = 0; i < playerCount; i++) {
+    activePlayers[i] = false;
+    lastPlayerRaw[i] = false;
+    stablePlayerBtn[i] = false;
+    lastPlayerDebounceTime[i] = 0;
+    writeLed(playerLedPins[i], false);
+  }
 }
 
 void loop() {
@@ -64,21 +78,51 @@ void loop() {
 
   switch (currentState) {
     case WAITING_FOR_GAME:
+      // show which players are activated
       for (int i = 0; i < playerCount; i++) {
-        writeLed(playerLedPins[i], false);
+        writeLed(playerLedPins[i], activePlayers[i]);
       }
-      if (currPressed && !lastPressed) {  //? user just pressed the button
+
+      // allow players to toggle their activation by pressing their button (non-blocking debounce)
+      for (int p = 0; p < playerCount; p++) {
+        bool raw = readButton(playerBtnPins[p]); // true == pressed
+        if (raw != lastPlayerRaw[p]) {
+          lastPlayerDebounceTime[p] = millis();
+        }
+        if (millis() - lastPlayerDebounceTime[p] > playerDebounceMs) {
+          if (raw != stablePlayerBtn[p]) {
+            stablePlayerBtn[p] = raw;
+            if (stablePlayerBtn[p]) { // stable press detected
+              activePlayers[p] = !activePlayers[p];
+              writeLed(playerLedPins[p], activePlayers[p]);
+            }
+          }
+        }
+        lastPlayerRaw[p] = raw;
+      }
+
+      if (currPressed && !lastPressed) {  //? user just pressed the main button
         lastPressed = currPressed;
         writeLed(mainLedPin, false);
 
-      } else if (!currPressed && lastPressed) {  //? user just let go of the button
+      } else if (!currPressed && lastPressed) {  //? user just let go of the main button
+        // count activated players
+        int activeCount = 0;
+        for (int i = 0; i < playerCount; i++) if (activePlayers[i]) activeCount++;
+        if (activeCount == 0) {
+          Serial.println("No players activated. Toggle player buttons to join.");
+          lastPressed = currPressed;
+          break;
+        }
+
+        // start game for activated players
         currentState = PLAYING;
         lastPressed = currPressed;
-        gearTimings[0] = random(2000, 4001);
         for (int i = 0; i < totalGears; i++) {
           gearTimings[i] = random(1000, 3001);
           for (int player = 0; player < playerCount; player++) {
-            playerTimes[player][i] = -1;
+            if (activePlayers[player]) playerTimes[player][i] = -1; // waiting to press
+            else playerTimes[player][i] = -2; // sentinel for inactive player
           }
         }
 
@@ -94,23 +138,42 @@ void loop() {
       {
         bool playerPressed[playerCount];
         for (int player = 0; player < playerCount; player++) {
-          playerPressed[player] = readButton(playerBtnPins[player]);
+          // only consider presses from activated players
+          if (!activePlayers[player]) {
+            playerPressed[player] = false;
+          } else {
+            playerPressed[player] = readButton(playerBtnPins[player]);
+          }
         }
 
         if (currentGearRunning >= totalGears) {
           currentState = GAME_END;
+          // compute results only for activated players
+          const int NOT_PLAYING_SCORE = 1000000000;
           for (int player = 0; player < playerCount; player++) {
+            if (!activePlayers[player]) {
+              playerResults[player] = NOT_PLAYING_SCORE;
+              continue;
+            }
             playerResults[player] = 0;
             for (int gear = 0; gear < totalGears; gear++) {
-              playerResults[player] += playerTimes[player][gear];
+              if (playerTimes[player][gear] >= 0) playerResults[player] += playerTimes[player][gear];
+              else if (playerTimes[player][gear] == penaltyMs) playerResults[player] += penaltyMs;
+              // ignore -2 sentinel for inactive players (shouldn't happen for active)
             }
           }
 
-          int bestResult = playerResults[0];
-          int bestPlayerIdx = 0;
+          // find best among activated players
+          int bestPlayerIdx = -1;
+          int bestResult = NOT_PLAYING_SCORE;
           bool hasTie = false;
-          for (int player = 1; player < playerCount; player++) {
-            if (playerResults[player] < bestResult) {
+          for (int player = 0; player < playerCount; player++) {
+            if (!activePlayers[player]) continue;
+            if (bestPlayerIdx == -1) {
+              bestPlayerIdx = player;
+              bestResult = playerResults[player];
+              hasTie = false;
+            } else if (playerResults[player] < bestResult) {
               bestResult = playerResults[player];
               bestPlayerIdx = player;
               hasTie = false;
@@ -118,11 +181,12 @@ void loop() {
               hasTie = true;
             }
           }
-          lastWinner = hasTie ? 0 : bestPlayerIdx + 1;
+          lastWinner = hasTie ? 0 : (bestPlayerIdx + 1);
 
           for (int player = 0; player < playerCount; player++) {
             Serial.print(playerNames[player]);
-            Serial.println(" player times: ");
+            if (!activePlayers[player]) Serial.println(" (not playing)");
+            else Serial.println(" player times: ");
             for (int gear = 0; gear < totalGears; gear++) {
               Serial.print(playerTimes[player][gear]);
               Serial.println(" ");
@@ -172,6 +236,7 @@ void loop() {
 
         bool allPlayersDone = true;
         for (int player = 0; player < playerCount; player++) {
+          if (!activePlayers[player]) continue;
           if (playerTimes[player][currentGearRunning] == -1) {
             allPlayersDone = false;
             break;
@@ -180,8 +245,9 @@ void loop() {
 
         if (millis() - playerReactionTime >= reactionWindowMs
             || allPlayersDone) {  // current gear ends
-          // checks for "didn't press"
+          // checks for "didn't press" (only for active players)
           for (int player = 0; player < playerCount; player++) {
+            if (!activePlayers[player]) continue;
             if (playerTimes[player][currentGearRunning] == -1) {
               playerTimes[player][currentGearRunning] = penaltyMs;
             }
@@ -200,12 +266,14 @@ void loop() {
       for (int i = 0; i < playerCount; i++) {
         writeLed(playerLedPins[i], false);
       }
-      if (lastWinner == 0) {  // tie, turn on all players
+      if (lastWinner == 0) {  // tie, turn on all *activated* players
         for (int i = 0; i < playerCount; i++) {
-          writeLed(playerLedPins[i], true);
+          if (activePlayers[i]) writeLed(playerLedPins[i], true);
         }
       } else {
-        writeLed(playerLedPins[lastWinner - 1], true);
+        // only light winner if they were activated
+        int idx = lastWinner - 1;
+        if (idx >= 0 && idx < playerCount && activePlayers[idx]) writeLed(playerLedPins[idx], true);
       }
       if (currPressed) {
         while (readButton(mainBtnPin)) {  // button is being held down (debounce)
